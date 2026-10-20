@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live Tiles Launcher Preview</title>
+<style>
+  :root { --accent:#0067C0; --accent2:#3b8eea; --glass: rgba(32,32,36,.62); --glass-b: rgba(255,255,255,.08); }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:#000; color:#fff; overflow:hidden;
+    font-family: "Segoe UI Variable", "Segoe UI", Inter, Roboto, system-ui, sans-serif; }
+  #stage { position:absolute; left:50%; top:50%; width:960px; height:540px; overflow:hidden; border-radius:8px; }
+  .bg { position:absolute; inset:0; transition: background .6s; }
+  .hidden { display:none !important; }
+
+  /* ---------- Header ---------- */
+  .head { position:absolute; left:40px; right:40px; top:22px; display:flex; align-items:baseline; gap:14px; }
+  .head h1 { margin:0; font-size:30px; font-weight:600; letter-spacing:-.3px; }
+  .head .sub { font-size:14px; opacity:.75; }
+
+  /* ---------- Tile canvas ---------- */
+  .viewport { position:absolute; left:0; right:0; top:66px; height:420px; overflow:hidden; }
+  .strip { position:absolute; left:40px; top:8px; display:flex; gap:44px; transition: transform .35s cubic-bezier(.2,.8,.2,1); }
+  .group-title { font-size:14px; font-weight:600; opacity:.85; margin:0 0 8px 2px; height:18px; }
+  .group { display:grid; grid-template-columns: repeat(6, 56px); grid-template-rows: repeat(6, 56px);
+           gap:8px; grid-auto-flow: row dense; }
+  .tile { position:relative; border-radius:8px; overflow:hidden; cursor:pointer;
+          transition: transform .18s ease, box-shadow .18s ease, filter .18s; outline: none; }
+  .tile.s { grid-column: span 1; grid-row: span 1; }
+  .tile.m { grid-column: span 2; grid-row: span 2; }
+  .tile.w { grid-column: span 4; grid-row: span 2; }
+  .tile.l { grid-column: span 4; grid-row: span 4; }
+  .tile .faces { position:absolute; inset:0; transition: transform .7s cubic-bezier(.3,.7,.2,1); }
+  .tile.flip .faces { transform: translateY(-100%); }
+  .face { position:absolute; left:0; right:0; height:100%; padding:10px 12px; display:flex; flex-direction:column; }
+  .face.b { top:100%; }
+  .tile .name { position:absolute; left:10px; bottom:7px; font-size:12px; font-weight:500; text-shadow:0 1px 2px rgba(0,0,0,.35); }
+  .tile.s .name { display:none; }
+  .glyph { margin:auto; font-weight:600; opacity:.95; display:grid; place-items:center; border-radius:10px; }
+  .tile.s .glyph { font-size:22px; }
+  .tile.m .glyph { font-size:38px; margin-top:22px; }
+  .tile.w .glyph, .tile.l .glyph { font-size:44px; }
+  .acrylic .tile:not(.solid) { backdrop-filter: blur(20px) saturate(1.3); }
+  .tile.f { transform: scale(1.06); box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(0,0,0,.6), 0 14px 30px rgba(0,0,0,.45); z-index:3; }
+  .tile.press { transform: scale(.96) perspective(400px) rotateX(4deg); }
+
+  /* live tile content */
+  .bigtime { font-size:64px; font-weight:300; line-height:1; margin-top:auto; letter-spacing:-1px; }
+  .bigtime small { font-size:20px; margin-left:6px; letter-spacing:0; }
+  .bigdate { font-size:17px; margin:6px 0 26px; opacity:.9; }
+  .cal { display:grid; grid-template-columns: repeat(7,1fr); gap:3px; font-size:12px; text-align:center; margin-top:8px; }
+  .cal b { opacity:.7; font-weight:600; }
+  .cal span.today { background:#fff; color:var(--accent); border-radius:50%; font-weight:700; }
+  .calhead { font-size:15px; font-weight:600; }
+  .wx-now { display:flex; align-items:center; gap:14px; margin-top:auto; margin-bottom:20px; }
+  .wx-now .e { font-size:46px; }
+  .wx-now .t { font-size:44px; font-weight:300; line-height:1; }
+  .wx-now .d { font-size:13px; opacity:.9; }
+  .fc { display:flex; justify-content:space-between; margin-top:auto; margin-bottom:22px; text-align:center; font-size:13px; }
+  .fc div { flex:1; } .fc .e { font-size:24px; display:block; margin:2px 0; }
+  .peek { margin-top:auto; margin-bottom:22px; }
+  .peek .k { font-size:11px; text-transform:uppercase; letter-spacing:.8px; opacity:.75; }
+  .peek .v { font-size:17px; font-weight:600; margin-top:2px; }
+  .art { position:absolute; inset:0; }
+
+  /* ---------- Taskbar ---------- */
+  .taskbar { position:absolute; left:0; right:0; bottom:0; height:52px; background: var(--glass);
+             backdrop-filter: blur(30px) saturate(1.4); border-top:1px solid var(--glass-b); display:flex; align-items:center; z-index:5; }
+  .tb-center { position:absolute; left:50%; transform:translateX(-50%); display:flex; gap:6px; }
+  .tb { width:42px; height:40px; border-radius:6px; display:grid; place-items:center; position:relative; transition: background .15s, transform .15s; }
+  .tb svg { width:22px; height:22px; fill:#fff; }
+  .tb.f { background: rgba(255,255,255,.16); box-shadow: 0 0 0 2px #fff; }
+  .tb .dot { position:absolute; bottom:2px; width:6px; height:3px; border-radius:2px; background:#9ab; }
+  .tb.active .dot { width:16px; background: var(--accent2); }
+  .tb-right { margin-left:auto; display:flex; align-items:center; gap:14px; padding-right:16px; font-size:12px; }
+  .tb-right .clock { text-align:right; line-height:1.3; }
+  .tb-left { padding-left:16px; display:flex; align-items:center; gap:8px; font-size:13px; }
+  .tb-left .e { font-size:20px; }
+
+  /* ---------- Start-style All apps panel ---------- */
+  .panel { position:absolute; left:50%; bottom:62px; transform:translateX(-50%); width:600px; height:420px; z-index:8;
+           background: rgba(36,36,40,.82); backdrop-filter: blur(40px) saturate(1.5); border:1px solid var(--glass-b);
+           border-radius:10px; padding:22px 26px; box-shadow:0 20px 60px rgba(0,0,0,.6); animation: up .22s ease; }
+  @keyframes up { from { transform:translate(-50%, 24px); opacity:0 } }
+  .panel h2 { margin:0 0 14px; font-size:15px; font-weight:600; }
+  .search { height:34px; border-radius:17px; background: rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.1);
+            display:flex; align-items:center; padding:0 14px; font-size:13px; opacity:.85; margin-bottom:16px; }
+  .apps { display:grid; grid-template-columns: repeat(6, 1fr); gap:6px 4px; overflow:hidden; height:300px; align-content:start; }
+  .appi { display:flex; flex-direction:column; align-items:center; gap:6px; padding:8px 2px; border-radius:6px; font-size:11.5px; text-align:center; }
+  .appi .ico { width:34px; height:34px; border-radius:8px; display:grid; place-items:center; font-weight:700; font-size:16px; }
+  .appi.f { background: rgba(255,255,255,.12); box-shadow: 0 0 0 2px #fff; }
+
+  /* ---------- Context menu ---------- */
+  .menu { position:absolute; z-index:12; min-width:230px; padding:5px; border-radius:8px;
+          background: rgba(44,44,48,.9); backdrop-filter: blur(30px); border:1px solid var(--glass-b);
+          box-shadow: 0 12px 40px rgba(0,0,0,.55); animation: pop .15s ease; }
+  @keyframes pop { from { transform: scale(.96); opacity:0 } }
+  .mi { padding:9px 12px; border-radius:5px; font-size:13.5px; display:flex; align-items:center; gap:10px; }
+  .mi .ic { width:18px; text-align:center; opacity:.85; }
+  .mi .r { margin-left:auto; opacity:.6; font-size:12px; }
+  .mi.f { background: rgba(255,255,255,.12); box-shadow: inset 3px 0 0 var(--accent2); }
+  .sep { height:1px; background: rgba(255,255,255,.1); margin:4px 6px; }
+
+  /* ---------- Settings (Win11-style) ---------- */
+  #settings { position:absolute; inset:0; z-index:6; background: rgba(25,25,28,.9); backdrop-filter: blur(40px); display:flex; }
+  .nav { width:220px; padding:22px 10px; }
+  .nav .who { display:flex; align-items:center; gap:10px; padding:4px 10px 18px; }
+  .nav .who .av { width:40px; height:40px; border-radius:50%; background: linear-gradient(135deg, var(--accent), var(--accent2)); display:grid; place-items:center; font-weight:700; }
+  .nav .who div { font-size:13px; line-height:1.3; } .nav .who small { opacity:.65; }
+  .ni { padding:9px 12px; border-radius:5px; font-size:13.5px; margin-bottom:2px; position:relative; display:flex; gap:10px; }
+  .ni.sel { background: rgba(255,255,255,.07); }
+  .ni.sel::before { content:""; position:absolute; left:0; top:10px; bottom:10px; width:3px; border-radius:2px; background: var(--accent2); }
+  .ni.f { box-shadow: 0 0 0 2px #fff; }
+  .pane { flex:1; padding:22px 28px 22px 10px; overflow:hidden; position:relative; }
+  .pane-inner { transition: transform .3s ease; }
+  .pane h2 { margin:0 0 16px; font-size:26px; font-weight:600; }
+  .card { background: rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.06); border-radius:7px; padding:14px 16px; margin-bottom:6px; }
+  .card .row { display:flex; align-items:center; gap:12px; }
+  .card .t { font-size:14px; } .card .d { font-size:12px; opacity:.65; margin-top:2px; }
+  .opts { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .sw { width:74px; height:44px; border-radius:6px; position:relative; }
+  .sw.sel::after { content:"✓"; position:absolute; right:5px; top:3px; font-size:13px; font-weight:700; }
+  .dotc { width:30px; height:30px; border-radius:50%; position:relative; }
+  .dotc.sel { box-shadow: 0 0 0 2px #191919, 0 0 0 4px #fff; }
+  .seg { padding:7px 14px; border-radius:5px; background: rgba(255,255,255,.06); font-size:13px; border:1px solid rgba(255,255,255,.08); }
+  .seg.sel { background: var(--accent2); border-color: transparent; color:#001; font-weight:600; }
+  .toggle { margin-left:auto; display:flex; align-items:center; gap:10px; font-size:13px; padding:4px; border-radius:14px; }
+  .toggle .trk { width:40px; height:20px; border-radius:10px; border:1px solid rgba(255,255,255,.6); position:relative; transition: background .2s; }
+  .toggle .trk::after { content:""; position:absolute; left:4px; top:4px; width:10px; height:10px; border-radius:50%; background:#fff; transition: left .2s; }
+  .toggle.on .trk { background: var(--accent2); border-color: var(--accent2); }
+  .toggle.on .trk::after { left:24px; background:#001; }
+  .sw.f, .dotc.f, .seg.f, .toggle.f, .back.f { box-shadow: 0 0 0 2px #fff; outline:none; }
+  .dotc.sel.f { box-shadow: 0 0 0 2px #191919, 0 0 0 4px #fff, 0 0 0 6px var(--accent2); }
+  .back { display:inline-flex; padding:6px 12px; border-radius:5px; font-size:13px; background: rgba(255,255,255,.06); margin-bottom:10px; }
+
+  #toast { position:absolute; left:50%; bottom:66px; transform:translateX(-50%); z-index:20; background: rgba(44,44,48,.95);
+           border:1px solid var(--glass-b); padding:10px 16px; border-radius:8px; font-size:13.5px; opacity:0; transition: opacity .25s; pointer-events:none; }
+  #help { position:fixed; bottom:10px; left:0; right:0; text-align:center; font-size:13px; color:#aaa; font-family: system-ui, sans-serif; }
+  kbd { background:#222; border:1px solid #444; border-radius:4px; padding:1px 6px; color:#ddd; font-family:inherit; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="bg" id="bg"></div>
+
+  <div class="head"><h1 id="greet">Good afternoon</h1><span class="sub" id="headdate"></span></div>
+  <div class="viewport"><div class="strip" id="strip"></div></div>
+
+  <div class="taskbar" id="taskbar">
+    <div class="tb-left"><span class="e" id="tbwx">🌤️</span><div><div id="tbtemp">31°C</div><div style="opacity:.7;font-size:11px" id="tbcity">Chennai</div></div></div>
+    <div class="tb-center" id="tbc"></div>
+    <div class="tb-right">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="#fff"><path d="M12 18.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM5.6 13.4a9 9 0 0 1 12.8 0l-1.4 1.4a7 7 0 0 0-10 0zM2.4 10.2a13.5 13.5 0 0 1 19.2 0l-1.4 1.4a11.5 11.5 0 0 0-16.4 0zM8.8 16.6a4.5 4.5 0 0 1 6.4 0l-1.4 1.4a2.5 2.5 0 0 0-3.6 0z"/></svg>
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="#fff"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>
+      <div class="clock"><div id="tbtime"></div><div id="tbdate"></div></div>
+    </div>
+  </div>
+
+  <div id="settings" class="hidden"></div>
+  <div id="toast"></div>
+</div>
+<div id="help">Arrows = D-pad · <kbd>Enter</kbd> = OK · hold <kbd>Enter</kbd> / <kbd>M</kbd> / right-click = tile menu · <kbd>Esc</kbd> = Back · <kbd>H</kbd> = Home</div>
+
+<script>
+/* ================= Data (on the TV this comes from installed apps) ================= */
+const T = (id, name, size, color, extra={}) => ({id, name, size, color, ...extra});
+const GROUPS = [
+  { title:"Today", tiles:[
+    T("clock","Clock","l",null,{live:"clock", accent:true}),
+    T("weather","Weather","w",null,{live:"weather", accent:true}),
+    T("lsettings","Launcher settings","m",null,{accent:true, act:"settings", glyph:"⚙"}),
+    T("store","Play Store","m","#1f5a4a"),
+    T("files","File Manager","s","#b7791f"),
+    T("browser","Browser","s","#2f6fd6"),
+    T("vlc","VLC","s","#d46a12"),
+    T("radar","Weather Radar","s","#2a8f84"),
+  ]},
+  { title:"Watch", tiles:[
+    T("netflix","Netflix","w","#6f1515",{live:"peek", k:"Last opened", v:"Yesterday, 9:40 PM"}),
+    T("youtube","YouTube","m","#4b1717",{live:"peek", k:"Opened", v:"2 hours ago"}),
+    T("prime","Prime Video","m","#12506b"),
+    T("hotstar","JioHotstar","w","#22337a",{live:"peek", k:"Last opened", v:"Sunday"}),
+    T("zee5","ZEE5","m","#43216f"),
+    T("news","News 24x7","m","#5c1c38",{live:"peek", k:"Channel", v:"Headlines"}),
+    T("sonyliv","SonyLIV","s","#333"),
+    T("sunnxt","Sun NXT","s","#7a4300"),
+    T("kodi","Kodi","s","#174b78"),
+    T("plex","Plex","s","#5e4b10"),
+  ]},
+  { title:"Play & listen", tiles:[
+    T("photos","Photos","l","#203040",{live:"photos"}),
+    T("spotify","Spotify","w","#17502c",{live:"peek", k:"Recently played", v:"Your Daily Mix"}),
+    T("chess","Chess Master","m","#2e4560"),
+    T("racer","Road Racer","m","#6b3510"),
+    T("livetv","Live Channels","m","#2f2f5e"),
+  ]},
+  { title:"System", tiles:[
+    T("wifi","Wi‑Fi & network","m",null,{accent:true, act:"sys", glyph:"📶"}),
+    T("bt","Bluetooth & remotes","m",null,{accent:true, act:"sys", glyph:"ᛒ"}),
+    T("display","Display","m",null,{accent:true, act:"sys", glyph:"🖵"}),
+    T("sound","Sound","m",null,{accent:true, act:"sys", glyph:"🔊"}),
+    T("apps","Apps","m",null,{accent:true, act:"sys", glyph:"▦"}),
+    T("date","Date & time","s",null,{accent:true, act:"sys", glyph:"🕒"}),
+    T("all","All settings","s",null,{accent:true, act:"sys", glyph:"⚙"}),
+    T("remote","Remote Desktop","m","#5b49a8"),
+  ]},
+];
+const ALL = GROUPS.flatMap(g=>g.tiles).filter(t=>!t.act && !t.live || ["netflix","youtube","hotstar","news","photos","spotify"].includes(t.id));
+const APPLIST = GROUPS.flatMap(g=>g.tiles).filter(t=>!t.act && t.id!=="clock" && t.id!=="weather").sort((a,b)=>a.name.localeCompare(b.name));
+
+const BACKGROUNDS = [
+  ["Glow", "radial-gradient(1200px 600px at 75% 35%, #2b6cc4 0%, transparent 55%), radial-gradient(900px 600px at 20% 90%, #1b3d7a 0%, transparent 60%), linear-gradient(135deg,#0b1830,#0d2a57)"],
+  ["Dusk", "radial-gradient(1000px 600px at 80% 20%, #c4567a 0%, transparent 55%), radial-gradient(900px 600px at 10% 80%, #3b2a7a 0%, transparent 60%), linear-gradient(135deg,#1b1030,#2d1a4a)"],
+  ["Lagoon", "radial-gradient(1000px 600px at 70% 30%, #1fa39a 0%, transparent 55%), radial-gradient(900px 600px at 20% 90%, #0d4a6e 0%, transparent 60%), linear-gradient(135deg,#06222c,#0a3a48)"],
+  ["Ember", "radial-gradient(1000px 600px at 75% 40%, #d0602a 0%, transparent 55%), radial-gradient(900px 600px at 15% 85%, #6a1e1e 0%, transparent 60%), linear-gradient(135deg,#1f0d08,#3a150c)"],
+  ["Slate", "radial-gradient(1000px 600px at 70% 30%, #4b5563 0%, transparent 55%), linear-gradient(135deg,#111318,#1f2430)"],
+];
+const ACCENTS = ["#0067C0","#2F7D32","#C239B3","#CA5010","#038387","#8764B8","#E81123","#4A5459"];
+const CITIES = ["Chennai","Coimbatore","Madurai","Bengaluru","Mumbai","Delhi"];
+
+const S = { bg:0, accent:0, live:true, acrylic:false, h24:false, fahr:false, city:"Chennai",
+            sizes:{}, liveOff:{}, pinned:new Set(GROUPS.flatMap(g=>g.tiles.map(t=>t.id))), screen:"home" };
+
+/* ================= Helpers ================= */
+const $ = s => document.querySelector(s);
+const shade = (hex, p) => { const n=parseInt(hex.slice(1),16); let r=n>>16,g=(n>>8)&255,b=n&255;
+  const f=v=>Math.max(0,Math.min(255,Math.round(v+(p<0?v*p:(255-v)*p)))); return `rgb(${f(r)},${f(g)},${f(b)})`; };
+const accent = () => ACCENTS[S.accent];
+function tileBg(t){ const c = t.accent||!t.color ? accent() : t.color;
+  return S.acrylic ? `linear-gradient(135deg, ${shade(c,.1)}cc, ${shade(c,-.2)}aa)` : `linear-gradient(135deg, ${shade(c,.12)}, ${shade(c,-.15)})`; }
+function toast(m){ const t=$("#toast"); t.textContent=m; t.style.opacity=1; clearTimeout(toast.h); toast.h=setTimeout(()=>t.style.opacity=0,1800); }
+const fmtTime = d => { let h=d.getHours(), m=String(d.getMinutes()).padStart(2,"0");
+  if (S.h24) return [String(h).padStart(2,"0")+":"+m, ""]; return [(h%12||12)+":"+m, h>=12?"PM":"AM"]; };
+const temp = c => S.fahr ? Math.round(c*9/5+32)+"°" : c+"°";
+
+/* ================= Tiles ================= */
+function faceHTML(t){
+  const d = new Date();
+  const glyph = `<div class="glyph">${t.glyph || t.name[0]}</div><div class="name">${t.name}</div>`;
+  if (!t.live || S.liveOff[t.id] || !S.live && t.live!=="clock" && t.live!=="weather") return `<div class="faces"><div class="face a">${glyph}</div></div>`;
+  if (t.live==="clock"){
+    const [tm, ap] = fmtTime(d);
+    const first = new Date(d.getFullYear(), d.getMonth(), 1).getDay(), days = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+    let cal = "SMTWTFS".split("").map(x=>`<b>${x}</b>`).join("") + "<span></span>".repeat(first);
+    for (let i=1;i<=days;i++) cal += `<span class="${i===d.getDate()?"today":""}">${i}</span>`;
+    return `<div class="faces">
+      <div class="face a"><div class="bigtime" data-live="time">${tm}<small>${ap}</small></div><div class="bigdate">${d.toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long"})}</div><div class="name">Clock</div></div>
+      <div class="face b"><div class="calhead">${d.toLocaleDateString("en-IN",{month:"long",year:"numeric"})}</div><div class="cal">${cal}</div><div class="name">Calendar</div></div></div>`;
+  }
+  if (t.live==="weather"){
+    return `<div class="faces">
+      <div class="face a"><div class="wx-now"><span class="e">🌤️</span><div><div class="t">${temp(31)}</div><div class="d">Partly cloudy · ${S.city}</div></div></div><div class="name">Weather</div></div>
+      <div class="face b"><div class="fc"><div>Wed<span class="e">☀️</span>${temp(32)}</div><div>Thu<span class="e">⛅</span>${temp(30)}</div><div>Fri<span class="e">🌧️</span>${temp(28)}</div><div>Sat<span class="e">⛈️</span>${temp(27)}</div></div><div class="name">Weather · ${S.city}</div></div></div>`;
+  }
+  if (t.live==="photos"){
+    return `<div class="faces">
+      <div class="face a"><div class="art" style="background:radial-gradient(circle at 70% 35%,#ffd28a 0 14%,transparent 15%),linear-gradient(#f39a5b,#b6527a 55%,#2b3a67 56%,#162447)"></div><div class="name">Photos · Beach sunrise</div></div>
+      <div class="face b"><div class="art" style="background:radial-gradient(circle at 30% 30%,#e8f4ff 0 9%,transparent 10%),linear-gradient(#1b2b4a,#30507a 60%,#14361f 61%,#0d2414)"></div><div class="name">Photos · Hills at night</div></div></div>`;
+  }
+  if (t.live==="peek"){
+    return `<div class="faces"><div class="face a">${glyph}</div>
+      <div class="face b"><div class="peek"><div class="k">${t.k}</div><div class="v">${t.v}</div></div><div class="name">${t.name}</div></div></div>`;
+  }
+}
+function renderStrip(){
+  const strip = $("#strip");
+  strip.innerHTML = GROUPS.map(g=>{
+    const tiles = g.tiles.filter(t=>S.pinned.has(t.id));
+    if (!tiles.length) return "";
+    return `<div><div class="group-title">${g.title}</div><div class="group">${tiles.map(t=>{
+      const size = S.sizes[t.id] || t.size;
+      return `<div class="tile ${size}${t.live==="photos"?" solid":""}" data-tile="${t.id}" style="background:${tileBg(t)}">${faceHTML(t)}</div>`;
+    }).join("")}</div></div>`;
+  }).join("");
+  strip.parentElement.classList.toggle("acrylic", S.acrylic);
+}
+const TB = [
+  ["home","Home",'<path d="M12 3 2 11h3v9h5v-6h4v6h5v-9h3z"/>'],
+  ["search","Search",'<path d="M10 3a7 7 0 0 1 5.6 11.2l5.1 5.1-1.4 1.4-5.1-5.1A7 7 0 1 1 10 3zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10z"/>'],
+  ["apps","All apps",'<path d="M4 4h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 10h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 16h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4z"/>'],
+  ["settings","Settings",'<path d="M19.1 12.9a7 7 0 0 0 0-1.8l2-1.6-1.9-3.3-2.4 1a7 7 0 0 0-1.6-.9L14.9 4h-3.8l-.4 2.5a7 7 0 0 0-1.6.9l-2.4-1-1.9 3.3 2 1.6a7 7 0 0 0 0 1.8l-2 1.6 1.9 3.3 2.4-1c.5.4 1 .7 1.6.9l.4 2.5h3.8l.4-2.5c.6-.2 1.1-.5 1.6-.9l2.4 1 1.9-3.3zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/>'],
+  ["netflix","Netflix",null],["youtube","YouTube",null],
+];
+function renderTaskbar(){
+  $("#tbc").innerHTML = TB.map(([id,name,svg])=>{
+    if (svg) return `<div class="tb${id==="home"&&S.screen==="home"?" active":""}" data-tb="${id}" title="${name}"><svg viewBox="0 0 24 24">${svg}</svg><span class="dot" style="${id==="home"?"":"display:none"}"></span></div>`;
+    const t = GROUPS.flatMap(g=>g.tiles).find(x=>x.id===id);
+    return `<div class="tb" data-tb="${id}" title="${name}"><div style="width:24px;height:24px;border-radius:6px;background:${tileBg(t)};display:grid;place-items:center;font-size:13px;font-weight:700">${name[0]}</div><span class="dot"></span></div>`;
+  }).join("");
+}
+
+/* ================= Live updates ================= */
+function tick(){
+  const d=new Date(), [tm,ap]=fmtTime(d);
+  const big = document.querySelector('[data-live="time"]'); if (big) big.innerHTML = `${tm}<small>${ap}</small>`;
+  $("#tbtime").textContent = tm+(ap?" "+ap:""); $("#tbdate").textContent = d.toLocaleDateString("en-IN");
+  $("#headdate").textContent = d.toLocaleDateString("en-IN",{weekday:"long", day:"numeric", month:"long"});
+  const h=d.getHours(); $("#greet").textContent = h<12?"Good morning":h<17?"Good afternoon":"Good evening";
+  $("#tbtemp").textContent = temp(31)+(S.fahr?"F":"C"); $("#tbcity").textContent = S.city;
+}
+setInterval(()=>{
+  if (!S.live || S.screen!=="home") return;
+  const lives=[...document.querySelectorAll(".tile")].filter(el=>el.querySelector(".face.b"));
+  if (!lives.length) return;
+  const el = lives[Math.floor(Math.random()*lives.length)]; el.classList.toggle("flip");
+}, 2200);
+
+/* ================= Spatial (D-pad) navigation ================= */
+let focused=null, layer=null; // layer: "menu" | "panel" | null
+function candidates(){
+  if (layer==="menu") return [...document.querySelectorAll(".menu .mi")];
+  if (layer==="panel") return [...document.querySelectorAll(".panel .appi")];
+  if (S.screen==="settings") return [...document.querySelectorAll("#settings [data-f]")];
+  return [...document.querySelectorAll("#strip .tile, #tbc .tb")];
+}
+function setFocus(el){
+  if (!el) return; focused?.classList.remove("f"); focused=el; el.classList.add("f");
+  if (el.classList.contains("tile")){                        // keep the tile in view
+    const strip=$("#strip"), vp=$(".viewport").getBoundingClientRect(), r=el.getBoundingClientRect();
+    const scale = vp.width/960; let x = parseFloat(strip.dataset.x||0);
+    if (r.right > vp.right - 40*scale) x -= (r.right - vp.right)/scale + 60;
+    if (r.left < vp.left + 40*scale) x += (vp.left - r.left)/scale + 60;
+    x = Math.min(0, x); strip.dataset.x=x; strip.style.transform=`translateX(${x}px)`;
+  }
+  if (S.screen==="settings" && el.closest(".pane")){
+    const inner=$(".pane-inner"), pane=$(".pane").getBoundingClientRect(), r=el.getBoundingClientRect(), sc=pane.height/ (540);
+    let y=parseFloat(inner.dataset.y||0);
+    if (r.bottom > pane.bottom-30*sc) y -= (r.bottom-pane.bottom)/sc + 60;
+    if (r.top < pane.top+60*sc) y += (pane.top-r.top)/sc + 80;
+    y=Math.min(0,y); inner.dataset.y=y; inner.style.transform=`translateY(${y}px)`;
+  }
+}
+function move(dx,dy){
+  const els=candidates(); if(!focused||!els.includes(focused)){ setFocus(els[0]); return; }
+  const a=focused.getBoundingClientRect(), ax=a.left+a.width/2, ay=a.top+a.height/2;
+  let best=null, bs=1e9;
+  for (const e of els){ if(e===focused) continue;
+    const b=e.getBoundingClientRect(), bx=b.left+b.width/2, by=b.top+b.height/2;
+    let p, o;
+    if (dx){ if (dx>0 ? b.left < a.right-4 : b.right > a.left+4) continue; p=Math.abs(bx-ax); o=Math.abs(by-ay); }
+    else   { if (dy>0 ? b.top < a.bottom-4 : b.bottom > a.top+4) continue; p=Math.abs(by-ay); o=Math.abs(bx-ax); }
+    const s=p+o*2.2; if (s<bs){ bs=s; best=e; } }
+  if (best) setFocus(best);
+}
+
+/* ================= Actions ================= */
+function findTile(id){ return GROUPS.flatMap(g=>g.tiles).find(t=>t.id===id); }
+function activate(el){
+  if (layer==="menu"){ el.click(); return; }
+  if (el.dataset.app){ closePanel(); toast(`Opening ${findTile(el.dataset.app).name}…`); return; }
+  if (el.dataset.tile){
+    const t=findTile(el.dataset.tile); el.classList.add("press"); setTimeout(()=>el.classList.remove("press"),160);
+    if (t.act==="settings") return openSettings();
+    if (t.act==="sys") return toast(`Opens Android ${t.name} settings`);
+    if (t.live==="clock") return toast("Opens the Clock & alarms app");
+    if (t.live==="weather") return toast("Opens the 7-day forecast");
+    return toast(`Opening ${t.name}…`);
+  }
+  if (el.dataset.tb){ const id=el.dataset.tb;
+    if (id==="home"){ S.strip=0; $("#strip").dataset.x=0; $("#strip").style.transform=""; setFocus(document.querySelector("#strip .tile")); }
+    else if (id==="apps") openPanel();
+    else if (id==="search") { openPanel(); toast("Type with the remote's keyboard or voice button"); }
+    else if (id==="settings") openSettings();
+    else toast(`Opening ${findTile(id).name}…`);
+    return; }
+  if (el.dataset.set) settingAction(el);
+}
+
+/* ---- tile context menu ---- */
+function openMenu(el){
+  const t=findTile(el.dataset.tile); if(!t) return;
+  const size=S.sizes[t.id]||t.size, names={s:"Small",m:"Medium",w:"Wide",l:"Large"};
+  const items=[["open","↗","Open"],["sep"],
+    ["resize","⤢","Resize",names[size]+"  ›"]];
+  if (t.live) items.push(["live","◐", S.liveOff[t.id]?"Turn live tile on":"Turn live tile off"]);
+  items.push(["unpin","📌","Unpin from Home"],["sep"]);
+  if (!t.act && !t.live || ["netflix","youtube","hotstar","news","photos","spotify"].includes(t.id)) items.push(["info","ⓘ","App info"],["uninstall","🗑","Uninstall"]);
+  const m=document.createElement("div"); m.className="menu";
+  m.innerHTML=items.map(i=>i[0]==="sep"?'<div class="sep"></div>':`<div class="mi" data-m="${i[0]}"><span class="ic">${i[1]}</span>${i[2]}${i[3]?`<span class="r">${i[3]}</span>`:""}</div>`).join("");
+  $("#stage").appendChild(m);
+  const st=$("#stage").getBoundingClientRect(), r=el.getBoundingClientRect(), sc=st.width/960;
+  let x=(r.right-st.left)/sc+8, y=(r.top-st.top)/sc;
+  if (x+240>950) x=(r.left-st.left)/sc-238; y=Math.min(y, 540-60-m.offsetHeight);
+  m.style.left=Math.max(10,x)+"px"; m.style.top=Math.max(10,y)+"px";
+  layer="menu"; const back=el;
+  m.querySelectorAll(".mi").forEach(mi=>mi.onclick=e=>{ e.stopPropagation(); menuAction(t,mi.dataset.m,back); });
+  setFocus(m.querySelector(".mi"));
+}
+function closeMenu(focusId){ document.querySelector(".menu")?.remove(); layer=null;
+  const el=focusId && document.querySelector(`[data-tile="${focusId}"]`); setFocus(el || document.querySelector("#strip .tile")); }
+function menuAction(t,a){
+  if (a==="open"){ closeMenu(t.id); toast(`Opening ${t.name}…`); return; }
+  if (a==="resize"){ const order = t.live==="clock"||t.live==="photos" ? ["l","w","m"] : ["s","m","w","l"];
+    const cur=S.sizes[t.id]||t.size; S.sizes[t.id]=order[(order.indexOf(cur)+1)%order.length];
+    renderStrip(); closeMenu(t.id); toast("Tile resized — choose Resize again to cycle sizes"); return; }
+  if (a==="live"){ S.liveOff[t.id]=!S.liveOff[t.id]; renderStrip(); closeMenu(t.id); return; }
+  if (a==="unpin"){ S.pinned.delete(t.id); renderStrip(); closeMenu(); toast(`${t.name} unpinned — re-pin it from All apps`); return; }
+  if (a==="info"){ closeMenu(t.id); toast("Opens Android's App info screen"); return; }
+  if (a==="uninstall"){ closeMenu(t.id); toast("Opens Android's uninstall confirmation"); return; }
+}
+
+/* ---- All apps panel ---- */
+function openPanel(){
+  if (layer==="panel") return;
+  const p=document.createElement("div"); p.className="panel";
+  p.innerHTML=`<div class="search">🔍&nbsp;&nbsp;Search apps, settings and files</div><h2>All apps</h2>
+    <div class="apps">${APPLIST.map(t=>`<div class="appi" data-app="${t.id}"><div class="ico" style="background:${tileBg(t)}">${t.name[0]}</div>${t.name}${S.pinned.has(t.id)?"":" <span style='opacity:.6'>(unpinned)</span>"}</div>`).join("")}</div>`;
+  $("#stage").appendChild(p); layer="panel";
+  p.querySelectorAll(".appi").forEach(a=>a.onclick=e=>{ e.stopPropagation(); setFocus(a); activate(a); });
+  setFocus(p.querySelector(".appi"));
+}
+function closePanel(){ document.querySelector(".panel")?.remove(); if(layer==="panel"){ layer=null; setFocus(document.querySelector('[data-tb="apps"]')); } }
+function panelMenu(el){ const id=el.dataset.app, t=findTile(id);
+  if (S.pinned.has(id)) toast(`${t.name} is already on Home`); else { S.pinned.add(id); renderStrip(); toast(`${t.name} pinned to Home`); el.lastChild.remove?.(); } }
+
+/* ================= Settings ================= */
+function openSettings(){ S.screen="settings"; renderSettings(); $("#settings").classList.remove("hidden"); setFocus(document.querySelector('#settings .ni.sel')); renderTaskbar(); }
+function closeSettings(){ S.screen="home"; $("#settings").classList.add("hidden"); renderTaskbar(); setFocus(document.querySelector('[data-tile="lsettings"]')||document.querySelector("#strip .tile")); }
+function renderSettings(keep){
+  const sel=(c)=>c?" sel":"";
+  $("#settings").innerHTML = `
+  <div class="nav">
+    <div class="who"><div class="av">TV</div><div>Living room TV<br><small>Tamizh Launcher</small></div></div>
+    ${[["pers","🎨","Personalization"],["start","▦","Home & tiles"],["time","🕒","Time & weather"],["about","ⓘ","About"]].map((n,i)=>`<div class="ni${i===0?" sel":""}" data-f data-set="nav" data-v="${n[0]}"><span>${n[1]}</span>${n[2]}</div>`).join("")}
+  </div>
+  <div class="pane"><div class="pane-inner" data-y="0">
+    <div class="back" data-f data-set="back">← Back to Home</div>
+    <h2>Personalization</h2>
+    <div class="card" id="sec-pers"><div class="t">Background</div><div class="d">Shown behind your tiles</div>
+      <div class="opts">${BACKGROUNDS.map((b,i)=>`<div class="sw${sel(S.bg===i)}" data-f data-set="bg" data-v="${i}" style="background:${b[1]}" title="${b[0]}"></div>`).join("")}</div></div>
+    <div class="card"><div class="t">Accent colour</div><div class="d">Used for system tiles, highlights and the taskbar</div>
+      <div class="opts">${ACCENTS.map((c,i)=>`<div class="dotc${sel(S.accent===i)}" data-f data-set="accent" data-v="${i}" style="background:${c}"></div>`).join("")}</div></div>
+    <div class="card" id="sec-start"><div class="row"><div><div class="t">Live tiles</div><div class="d">Tiles flip to show the calendar, forecast, photos and recent activity</div></div>
+      <div class="toggle${S.live?" on":""}" data-f data-set="live">${S.live?"On":"Off"}<span class="trk"></span></div></div></div>
+    <div class="card"><div class="row"><div><div class="t">Transparent tiles</div><div class="d">Frosted-glass tiles that let the background show through</div></div>
+      <div class="toggle${S.acrylic?" on":""}" data-f data-set="acrylic">${S.acrylic?"On":"Off"}<span class="trk"></span></div></div></div>
+    <div class="card"><div class="t">Unpinned tiles</div><div class="d">${GROUPS.flatMap(g=>g.tiles).filter(t=>!S.pinned.has(t.id)).map(t=>t.name).join(", ")||"None — every tile is on Home"}</div>
+      <div class="opts"><div class="seg" data-f data-set="repin">Restore all tiles</div></div></div>
+    <div class="card" id="sec-time"><div class="t">Clock</div><div class="opts">
+      <div class="seg${sel(!S.h24)}" data-f data-set="h24" data-v="0">12-hour</div><div class="seg${sel(S.h24)}" data-f data-set="h24" data-v="1">24-hour</div></div></div>
+    <div class="card"><div class="t">Temperature</div><div class="opts">
+      <div class="seg${sel(!S.fahr)}" data-f data-set="fahr" data-v="0">Celsius</div><div class="seg${sel(S.fahr)}" data-f data-set="fahr" data-v="1">Fahrenheit</div></div></div>
+    <div class="card"><div class="t">Weather location</div><div class="d">Currently ${S.city} · live data from Open-Meteo in the real app</div><div class="opts">
+      ${CITIES.map(c=>`<div class="seg${sel(S.city===c)}" data-f data-set="city" data-v="${c}">${c}</div>`).join("")}<div class="seg" data-f data-set="type">Type a city…</div></div></div>
+    <div class="card" id="sec-about"><div class="t">Tamizh TV Launcher</div><div class="d">Version 1.0 preview · Android TV 6.0 and later</div>
+      <div class="opts"><div class="seg" data-f data-set="home">Make this my home screen</div></div></div>
+  </div></div>`;
+  document.querySelectorAll("#settings [data-f]").forEach(e=>e.onclick=ev=>{ ev.stopPropagation(); setFocus(e); settingAction(e); });
+  if (keep){ const t=document.querySelector(`#settings [data-set="${keep[0]}"]${keep[1]!=null?`[data-v="${keep[1]}"]`:""}`); if (t){ $(".pane-inner").dataset.y=keep[2]; $(".pane-inner").style.transform=`translateY(${keep[2]}px)`; setFocus(t);} }
+}
+function applyLook(){
+  $("#bg").style.background = BACKGROUNDS[S.bg][1];
+  document.documentElement.style.setProperty("--accent", accent());
+  document.documentElement.style.setProperty("--accent2", shade(accent(), .35));
+}
+function settingAction(el){
+  const k=el.dataset.set, v=el.dataset.v, y=parseFloat($(".pane-inner")?.dataset.y||0);
+  const redo=()=>{ applyLook(); renderStrip(); renderTaskbar(); tick(); renderSettings([k, el.dataset.v ?? null, y]); };
+  if (k==="back") return closeSettings();
+  if (k==="nav"){ const sec=$("#sec-"+v); if (sec){ const f=sec.querySelector("[data-f]"); setFocus(f); }
+    document.querySelectorAll(".ni").forEach(n=>n.classList.toggle("sel", n===el)); return; }
+  if (k==="bg") S.bg=+v; else if (k==="accent") S.accent=+v; else if (k==="live") S.live=!S.live;
+  else if (k==="acrylic") S.acrylic=!S.acrylic; else if (k==="h24") S.h24=v==="1"; else if (k==="fahr") S.fahr=v==="1";
+  else if (k==="city"){ S.city=v; toast("Weather location set to "+v); }
+  else if (k==="repin"){ GROUPS.forEach(g=>g.tiles.forEach(t=>S.pinned.add(t.id))); toast("All tiles restored"); }
+  else if (k==="type") return toast("Opens the on-screen keyboard");
+  else if (k==="home") return toast("Opens Android's Home-app setting");
+  redo();
+}
+
+/* ================= Input ================= */
+let holdT=null, held=false;
+document.addEventListener("keydown",e=>{
+  const k=e.key;
+  if (k.startsWith("Arrow")) e.preventDefault();
+  if (k==="ArrowLeft") move(-1,0); else if (k==="ArrowRight") move(1,0);
+  else if (k==="ArrowUp") move(0,-1); else if (k==="ArrowDown") move(0,1);
+  else if (k==="Enter"){ if (e.repeat) return; held=false;
+    holdT=setTimeout(()=>{ held=true; if (layer===null && focused?.dataset.tile) openMenu(focused); else if (layer==="panel" && focused?.dataset.app) panelMenu(focused); },550); }
+  else if (k==="m"||k==="M"){ if (layer===null && focused?.dataset.tile) openMenu(focused); else if (layer==="panel" && focused?.dataset.app) panelMenu(focused); }
+  else if (k==="Escape"||k==="Backspace"){
+    if (layer==="menu"){ const id=document.querySelector(".tile.f")?.dataset.tile; closeMenu(lastTile); }
+    else if (layer==="panel") closePanel(); else if (S.screen==="settings") closeSettings(); }
+  else if (k==="h"||k==="H"){ document.querySelector(".menu")?.remove(); document.querySelector(".panel")?.remove(); layer=null;
+    if (S.screen==="settings") closeSettings(); activate(document.querySelector('[data-tb="home"]')); }
+});
+document.addEventListener("keyup",e=>{ if (e.key==="Enter"){ clearTimeout(holdT); if (!held && focused) activate(focused); } });
+let lastTile=null;
+const _open=openMenu; openMenu=(el)=>{ lastTile=el.dataset.tile; _open(el); };
+$("#stage").addEventListener("click",e=>{
+  if (layer==="menu"){ closeMenu(lastTile); return; }
+  if (layer==="panel" && !e.target.closest(".panel")){ closePanel(); return; }
+  const el=e.target.closest("[data-tile],[data-tb]"); if(!el) return; setFocus(el); activate(el);
+});
+$("#stage").addEventListener("contextmenu",e=>{ const el=e.target.closest("[data-tile]"); if(!el||layer) return; e.preventDefault(); setFocus(el); openMenu(el); });
+
+function fit(){ const s=Math.min(innerWidth/960,(innerHeight-40)/540); $("#stage").style.transform=`translate(-50%,calc(-50% - 14px)) scale(${s})`; }
+addEventListener("resize",fit);
+
+applyLook(); renderStrip(); renderTaskbar(); tick(); setInterval(tick,1000); fit();
+setFocus(document.querySelector("#strip .tile"));
+</script>
+</body>
+</html>

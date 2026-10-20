@@ -176,7 +176,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         liveOffTiles = if (tileId in liveOffTiles) liveOffTiles - tileId else liveOffTiles + tileId
         prefs.liveOffTiles = liveOffTiles
     }
-
+    @JvmName("applyFavourites")
     private fun setFavourites(list: List<String>) {
         favourites = list
         prefs.favourites = list
